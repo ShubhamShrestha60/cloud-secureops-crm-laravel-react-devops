@@ -1,0 +1,33 @@
+global:
+  env: prod
+
+backend:
+  replicaCount: 3
+  resources:
+    requests: { cpu: 200m, memory: 512Mi }
+    limits: { cpu: 1000m, memory: 1Gi }
+  autoscaling:
+    minReplicas: 3
+    maxReplicas: 8
+
+frontend:
+  replicaCount: 3
+  autoscaling:
+    minReplicas: 3
+    maxReplicas: 6
+
+secrets:
+  create: false # prod must use External Secrets, never values
+
+externalSecret:
+  enabled: true
+  appSecretId: "secureops/prod/app"
+  dbSecretId: "secureops/prod/database"
+
+ingress:
+  # host: app.example.com
+  # tls:
+  #   - hosts: [app.example.com]
+  #     secretName: app-tls
+  host: ""
+  tls: []

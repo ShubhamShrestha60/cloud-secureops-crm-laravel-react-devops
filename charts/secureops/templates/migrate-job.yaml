@@ -1,0 +1,52 @@
+{{- if .Values.migrate.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-migrate-{{ .Release.Revision }}
+  labels:
+    {{- include "secureops.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+  annotations:
+    # Helm hook (helm upgrade path) + ArgoCD SyncWave (GitOps path) both run migrate first.
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+    argocd.argoproj.io/sync-wave: "-5"
+spec:
+  backoffLimit: {{ .Values.migrate.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.migrate.activeDeadlineSeconds }}
+  template:
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 82
+        fsGroup: 82
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: migrate
+          image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          command: ["php", "artisan", "migrate", "--force", "--no-interaction"]
+          env:
+            - { name: APP_ENV, value: {{ .Values.backend.env.APP_ENV | quote }} }
+            - { name: DB_CONNECTION, value: {{ .Values.backend.env.DB_CONNECTION | quote }} }
+            - name: APP_KEY
+              valueFrom: { secretKeyRef: { name: {{ include "secureops.secretName" . }}, key: APP_KEY } }
+            - name: DB_HOST
+              valueFrom: { secretKeyRef: { name: {{ include "secureops.secretName" . }}, key: DB_HOST } }
+            - name: DB_PORT
+              valueFrom: { secretKeyRef: { name: {{ include "secureops.secretName" . }}, key: DB_PORT } }
+            - name: DB_DATABASE
+              valueFrom: { secretKeyRef: { name: {{ include "secureops.secretName" . }}, key: DB_DATABASE } }
+            - name: DB_USERNAME
+              valueFrom: { secretKeyRef: { name: {{ include "secureops.secretName" . }}, key: DB_USERNAME } }
+            - name: DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ include "secureops.secretName" . }}, key: DB_PASSWORD } }
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: 500m, memory: 512Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+{{- end }}

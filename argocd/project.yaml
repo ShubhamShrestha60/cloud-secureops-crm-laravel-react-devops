@@ -1,0 +1,16 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: secureops
+  namespace: argocd
+spec:
+  description: SecureOps CRM environments
+  sourceRepos:
+    - https://github.com/<GITHUB_OWNER>/<GITHUB_REPO>.git
+  destinations:
+    - { namespace: secureops-staging, server: https://kubernetes.default.svc }
+    - { namespace: secureops-prod, server: https://kubernetes.default.svc }
+  clusterResourceWhitelist:
+    - { group: "*", kind: "*" }
+  namespaceResourceWhitelist:
+    - { group: "*", kind: "*" }

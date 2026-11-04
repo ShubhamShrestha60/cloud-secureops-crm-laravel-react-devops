@@ -1,0 +1,23 @@
+version: 2
+updates:
+  # Pinned CI actions rotted twice during this project's setup
+  # (trivy-action tags, setup-trivy chain) — automate the bumps.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    commit-message: { prefix: "chore" }
+
+  - package-ecosystem: docker
+    directory: /backend
+    schedule: { interval: weekly }
+    commit-message: { prefix: "chore" }
+
+  - package-ecosystem: docker
+    directory: /frontend
+    schedule: { interval: weekly }
+    commit-message: { prefix: "chore" }
+
+  - package-ecosystem: terraform
+    directory: /infra/terraform
+    schedule: { interval: weekly }
+    commit-message: { prefix: "chore" }

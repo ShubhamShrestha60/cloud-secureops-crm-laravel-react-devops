@@ -1,0 +1,203 @@
+name: Release (build, scan, push to ECR)
+
+# Gated pipeline: each image is built LOCALLY, scanned, and pushed to ECR
+# only if its own scan passes. Nothing vulnerable ever leaves the runner.
+# ArgoCD pulls from ECR — this workflow never touches the cluster (GitOps pull model).
+# Required repo Variables: AWS_REGION, AWS_ROLE_TO_ASSUME,
+#   ECR_BACKEND_REPOSITORY, ECR_FRONTEND_REPOSITORY
+# Required: OIDC trust from the ECR/IAM Terraform module to this repo.
+#
+# NOTE: provenance/SBOM attestations are intentionally OFF here. Attestations
+# require build-push-action to push directly, which would put push before scan.
+# The exact scanned image object is pushed via `docker push`, so bytes scanned
+# == bytes stored. (ECR scan-on-push remains as a backstop.)
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Override image tag (default: git sha)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  id-token: write
+  security-events: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  ECR_BACKEND_REPOSITORY: ${{ vars.ECR_BACKEND_REPOSITORY }}
+  ECR_FRONTEND_REPOSITORY: ${{ vars.ECR_FRONTEND_REPOSITORY }}
+
+jobs:
+  meta:
+    name: Resolve tag
+    runs-on: ubuntu-latest
+    outputs:
+      value: ${{ steps.tag.outputs.value }}
+    steps:
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            echo "value=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "value=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=sha-${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+          fi
+
+  backend:
+    name: Backend (build, scan, push)
+    runs-on: ubuntu-latest
+    needs: [meta]
+    env:
+      TAG: ${{ needs.meta.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Local-only build, tagged with its final ECR name but NOT pushed.
+      - name: Build backend (local)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: false
+          load: true
+          platforms: linux/amd64
+          tags: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BACKEND_REPOSITORY }}:${{ env.TAG }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Gate: fails the job on HIGH/CRITICAL. Push below is skipped.
+      - name: Trivy scan backend
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BACKEND_REPOSITORY }}:${{ env.TAG }}
+          format: table
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+
+      # SARIF copy for the Security tab (never gates; DB already cached).
+      - name: Trivy SARIF backend
+        if: always()
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BACKEND_REPOSITORY }}:${{ env.TAG }}
+          format: sarif
+          output: trivy-backend.sarif
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+
+      - name: Upload SARIF backend
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-backend.sarif
+          category: trivy-backend
+
+      # Pushes the exact image object that was just scanned.
+      - name: Push backend to ECR
+        run: docker push ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BACKEND_REPOSITORY }}:${{ env.TAG }}
+
+  frontend:
+    name: Frontend (build, scan, push)
+    runs-on: ubuntu-latest
+    needs: [meta]
+    env:
+      TAG: ${{ needs.meta.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build frontend (local)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: false
+          load: true
+          platforms: linux/amd64
+          tags: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND_REPOSITORY }}:${{ env.TAG }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Trivy scan frontend
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND_REPOSITORY }}:${{ env.TAG }}
+          format: table
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+
+      - name: Trivy SARIF frontend
+        if: always()
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND_REPOSITORY }}:${{ env.TAG }}
+          format: sarif
+          output: trivy-frontend.sarif
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+
+      - name: Upload SARIF frontend
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-frontend.sarif
+          category: trivy-frontend
+
+      - name: Push frontend to ECR
+        run: docker push ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND_REPOSITORY }}:${{ env.TAG }}
+
+  summary:
+    name: Summary
+    runs-on: ubuntu-latest
+    needs: [meta, backend, frontend]
+    steps:
+      - run: |
+          echo "Pushed tag: ${{ needs.meta.outputs.value }}"
+          echo "Both images scanned clean (HIGH/CRITICAL gate) before push."
+          echo "Next: pin charts/secureops/values-staging.yaml image.tags to ${{ needs.meta.outputs.value }}."
+
+  notify-failure:
+    name: Scan-gate failure notice
+    runs-on: ubuntu-latest
+    needs: [meta, backend, frontend]
+    if: failure()
+    steps:
+      - run: |
+          echo "::error::Release gate blocked tag ${{ needs.meta.outputs.value }}: Trivy found HIGH/CRITICAL vulnerabilities."
+          echo "Nothing was pushed to ECR for the failing image (verify with: aws ecr describe-images)."
+          echo "Read the CVE table in the failed scan step above, fix base/app layers, then push a new commit."
