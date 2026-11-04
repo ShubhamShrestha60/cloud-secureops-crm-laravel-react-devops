@@ -4,7 +4,7 @@
 # or via Helm pre-upgrade Job when SKIP_MIGRATIONS=true.
 # Port 8080 (not 80) so the image can run as non-root + read-only-ish on K8s.
 
-FROM php:8.3-fpm-alpine AS vendor
+FROM php:8.5-fpm-alpine AS vendor
 
 # hadolint ignore=DL3018
 # apk upgrade first: pulls patched OS libs (libexpat, pcre2) regardless of base snapshot age.
@@ -37,7 +37,7 @@ COPY . .
 RUN composer dump-autoload --optimize --no-dev \
     && composer check-platform-reqs --no-dev || true
 
-FROM php:8.3-fpm-alpine AS runtime
+FROM php:8.5-fpm-alpine AS runtime
 
 WORKDIR /var/www
 
