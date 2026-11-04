@@ -2,7 +2,7 @@
 # Stage 1 builds the Vite bundle; stage 2 serves it via nginx on 8080 as non-root.
 # Same-origin /api proxy is for local compose only — on EKS the Ingress routes
 # /api/* to the backend Service, so this proxy is a fallback.
-FROM node:20-alpine AS build
+FROM node:26-alpine AS build
 
 # Patched OS libs (libexpat, pcre2) regardless of base snapshot age.
 RUN apk upgrade --no-cache
