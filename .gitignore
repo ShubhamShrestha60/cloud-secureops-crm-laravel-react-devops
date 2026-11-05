@@ -1,0 +1,64 @@
+# Composer
+/composer.phar
+
+# Environment files
+.env
+.env.*
+!**/.env.example
+
+# Dependencies
+/vendor/
+node_modules/
+backend/vendor/
+backend/node_modules/
+frontend/node_modules/
+
+# Build output
+/dist/
+frontend/dist/
+
+# PHPUnit
+.phpunit.cache/
+
+# Storage / secrets
+storage/*.key
+
+# macOS
+.DS_Store
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+*.auto.tfvars
+crash.log
+override.tf
+override.tf.json
+
+
+
+
+# keep lockfile, drop cache
+!**/.terraform.lock.hcl
+terraform.tfstate.backup
+
+
+# Keep regular staging/prod .tfvars files
+# (they currently contain no secrets)
+
+# Project dump
+project_dump.txt
+
+# AWS / Kubernetes / certificates / keys
+.aws/
+kubeconfig
+*.pem
+*.key
+
+
+
+
+**/storage/*.key
+**/.phpunit.cache/
+**/public/build
+**/public/hot

@@ -1,0 +1,41 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    {{- include "secureops.labels" . | nindent 4 }}
+  annotations:
+    {{- toYaml .Values.ingress.annotations | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.tls }}
+  tls:
+    {{- toYaml .Values.ingress.tls | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- if .Values.ingress.host }}
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service: { name: {{ include "secureops.backendFullname" . }}, port: { number: 80 } }
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: {{ include "secureops.frontendFullname" . }}, port: { number: 80 } }
+    {{- else }}
+    - http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service: { name: {{ include "secureops.backendFullname" . }}, port: { number: 80 } }
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: {{ include "secureops.frontendFullname" . }}, port: { number: 80 } }
+    {{- end }}
+{{- end }}

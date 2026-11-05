@@ -1,0 +1,32 @@
+global:
+  env: staging
+
+backend:
+  replicaCount: 2
+  image:
+    repository: <ACCOUNT_ID>.dkr.ecr.ap-south-1.amazonaws.com/secureops-staging-backend
+    tag: "sha-4ea08538f439"
+
+frontend:
+  replicaCount: 2
+  image:
+    repository: <ACCOUNT_ID>.dkr.ecr.ap-south-1.amazonaws.com/secureops-staging-frontend
+    tag: "sha-4ea08538f439"
+
+secrets:
+  create: false # staging uses External Secrets (Secrets Manager), like prod
+
+externalSecret:
+  enabled: true
+  appSecretId: "secureops/staging/app"
+  dbSecretId: "secureops/staging/database"
+
+ingress:
+  host: "staging.shubham-shrestha.com.np"
+  tls:
+    - hosts: ["staging.shubham-shrestha.com.np"]
+      secretName: app-tls
+  annotations:
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/certificate-arn: <ACM_CERT_ARN>
+    alb.ingress.kubernetes.io/ssl-redirect: "443"

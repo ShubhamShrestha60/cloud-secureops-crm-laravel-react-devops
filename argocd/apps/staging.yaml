@@ -1,0 +1,41 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: secureops-staging
+  namespace: argocd
+  # SyncWave ordering inside the chart (migrate Job wave -5) runs before Deployments.
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: secureops
+  source:
+    # TODO: replace with your fork URL if different.
+    repoURL: https://github.com/<GITHUB_OWNER>/<GITHUB_REPO>.git
+    targetRevision: main
+    path: charts/secureops
+    helm:
+      valueFiles:
+        - values.yaml
+        - values-staging.yaml
+      # release.yml updates these via commit, or enable Image Updater:
+      # parameters:
+      #   - name: backend.image.tag
+      #     value: sha-xxxxxxxxxxxx
+      #   - name: frontend.image.tag
+      #     value: sha-xxxxxxxxxxxx
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: secureops-staging
+  # ESO defaults fields the chart doesn't set (conversion/decoding strategies,
+  # deletionPolicy). Ignore them so the dashboard reflects real drift only.
+  # Secret IDs (dataFrom[].key) still render from git; ID changes re-sync.
+  ignoreDifferences:
+    - group: external-secrets.io
+      kind: ExternalSecret
+      jsonPointers:
+        - /spec/dataFrom
+        - /spec/target/deletionPolicy
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [CreateNamespace=true, ServerSideApply=true]
+    retry: { limit: 5, backoff: { duration: 5s, factor: 2, maxDuration: 3m } }
